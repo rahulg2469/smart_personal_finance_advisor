@@ -1,0 +1,31 @@
+# Smart Personal Finance Advisor - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+
+# Deep Learning
+torch>=2.0.0
+
+# Optimization
+scipy>=1.11.0
+
+# Dashboard
+streamlit>=1.28.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.15.0
+
+# Jupyter Notebooks
+jupyter>=1.0.0
+notebook>=7.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.65.0
