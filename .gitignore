@@ -208,3 +208,4 @@ __marimo__/
 
 data/*.csv
 venv/
+.DS_Store
