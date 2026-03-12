@@ -306,10 +306,3 @@ Spending amount in each of the 14 categories
 - **joblib** - Model persistence
 - **Google Colab** - Development environment
 
----
-
-## References
-
-- Dataset: [Kaggle Credit Card Transactions](https://www.kaggle.com/datasets/kartik2112/fraud-detection)
-- Isolation Forest: Liu, F. T., Ting, K. M., & Zhou, Z. H. (2008)
-- Gradient Boosting: Friedman, J. H. (2001)
