@@ -20,59 +20,70 @@ Our system combines spending pattern analysis, mathematical optimization, and be
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Layer 1: User Input (Onboarding Form)                         │
+│  Layer 1: User Input                                            │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 2: ML Analysis                                           │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌─────────┐ │
-│  │Random Forest │ │   K-Means    │ │  Isolation   │ │Gradient │ │
-│  │Categorization│ │  Clustering  │ │   Forest     │ │Boosting │ │
+│  │Random Forest │ │   K-Means    │ │  Isolation   │ │XGBoost  │ │
+│  │Categorization│ │  Clustering  │ │   Forest     │ │Prediction│ │
 │  └──────────────┘ └──────────────┘ └──────────────┘ └─────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 3: Budget Optimization (SLSQP)                           │
 ├─────────────────────────────────────────────────────────────────┤
 │  Layer 4: Neural Network (Advice Prioritization)                │
+├─────────────────────────────────────────────────────────────────┤
+│  Layer 5: Streamlit Dashboard                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## ML Components
 
-| Component | Algorithm | Purpose |
-|-----------|-----------|---------|
-| Transaction Categorization | Random Forest | Auto-categorize transactions (Dining, Groceries, etc.) |
-| User Segmentation | K-Means | Cluster users into spending personality types |
-| Anomaly Detection | Isolation Forest | Flag unusual spending patterns |
-| Spending Prediction | Gradient Boosting | Predict next month's spending |
-| Budget Optimization | SLSQP | Calculate optimal budget allocations |
-| Advice Prioritization | Neural Network | Prioritize which budget cuts to make first |
+| Component | Algorithm | Purpose | Performance |
+|-----------|-----------|---------|-------------|
+| Transaction Categorization | Random Forest | Auto-categorize transactions into 14 categories | 93.45% accuracy |
+| User Segmentation | K-Means (K=4) | Cluster users into spending personality types | 4 distinct clusters |
+| Anomaly Detection | Isolation Forest | Flag unusual spending patterns and potential fraud | 90.10% detection, 0.935 AUC |
+| Spending Prediction | XGBoost | Predict next month's total spending | R²=0.815, MAE=$1,118 |
+| Budget Optimization | SLSQP | Calculate optimal budget cuts across categories | 10:2:1 priority ratio |
+| Advice Prioritization | Neural Network (PyTorch) | Prioritize which budget cuts to make first | 94.25% accuracy |
+
+## User Clusters
+
+K-Means identified 4 distinct spending personalities:
+
+| Cluster | Name | % of Users | Characteristics |
+|---------|------|------------|-----------------|
+| 0 | Average | 35.5% | Grocery and gas focused, typical spending patterns |
+| 1 | High Spender | 38.0% | Highest total spent, balanced across categories |
+| 2 | Inconsistent | 7.5% | Few transactions, high amounts, online shopping heavy |
+| 3 | Budget-Conscious | 18.9% | Lower spending, family focused |
 
 ## Project Structure
 
 ```
 smart_personal_finance_advisor/
-├── data/                    # Dataset (not tracked in git)
-│   └── README.md            # Download instructions
-├── models/                  # Saved trained models
-├── notebooks/               # Jupyter notebooks for exploration
-├── src/
-│   ├── categorization/      # Random Forest module
-│   ├── clustering/          # K-Means module
-│   ├── anomaly/             # Isolation Forest module
-│   ├── prediction/          # Gradient Boosting module
-│   ├── optimization/        # SLSQP budget optimizer
-│   ├── neural_network/      # Advice prioritization NN
-│   └── utils/               # Shared helper functions
-├── dashboard/               # Streamlit app
-├── docs/                    # Reports and documentation
-├── tests/                   # Unit tests
-├── requirements.txt         # Python dependencies
-└── README.md
+├── notebooks/
+│   ├── Data_Exploration.ipynb
+│   ├── K_Means_Clustering.ipynb
+│   ├── Random_Forest.ipynb
+│   ├── Isolation_Forest.ipynb
+│   ├── Gradient_Boosting.ipynb
+│   ├── SLSQP_Optimization.ipynb
+│   ├── Neural_Networks.ipynb
+│   └── End_to_End_Testing.ipynb
+├── images/
+├── data/
+│   └── README.md            # Dataset download instructions
+├── PROGRESS.md
+├── README.md
+└── requirements.txt
 ```
 
 ## Setup Instructions
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/smart_personal_finance_advisor.git
+git clone https://github.com/rahulg2469/smart_personal_finance_advisor.git
 cd smart_personal_finance_advisor
 ```
 
@@ -90,31 +101,51 @@ pip install -r requirements.txt
 ### 4. Download the dataset
 See `data/README.md` for instructions to download the Kaggle dataset.
 
+### 5. Run notebooks
+Open notebooks in Google Colab or Jupyter and run in order:
+1. Data_Exploration.ipynb
+2. K_Means_Clustering.ipynb
+3. Random_Forest.ipynb
+4. Isolation_Forest.ipynb
+5. Gradient_Boosting.ipynb
+6. SLSQP_Optimization.ipynb
+7. Neural_Networks.ipynb
+8. End_to_End_Testing.ipynb
+
 ## Timeline
 
-| Week | Tasks |
-|------|-------|
-| 1-2 | Data exploration, feature engineering, literature review |
-| 3-4 | Train ML models (Random Forest, K-Means, Isolation Forest, Gradient Boosting) |
-| 5 | Optimization implementation (SLSQP) |
-| 6 | Neural network for advice prioritization |
-| 7 | Streamlit dashboard and user study |
-| 8-10 | Paper writing and final polish |
+| Week | Tasks | Status |
+|------|-------|--------|
+| 1-2 | Data exploration, feature engineering | Complete |
+| 3-4 | Train ML models (Random Forest, K-Means, Isolation Forest, Gradient Boosting) | Complete |
+| 5 | SLSQP budget optimization | Complete |
+| 6 | Neural network for advice prioritization | Complete |
+| 7 | End-to-end testing pipeline | Complete |
+| 8 | Streamlit dashboard | In Progress |
 
 ## Tech Stack
 
 - **Language:** Python 3.10+
-- **ML:** scikit-learn, PyTorch
-- **Optimization:** SciPy
+- **ML:** scikit-learn, XGBoost, PyTorch
+- **Optimization:** SciPy (SLSQP)
 - **Dashboard:** Streamlit
 - **Data:** pandas, numpy
-- **Visualization:** matplotlib, seaborn, plotly
+- **Visualization:** matplotlib, seaborn
 
 ## Dataset
 
 We use the [Kaggle Credit Card Transactions Fraud Detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection) dataset:
-- 1.3M transactions from 1,000 users over 2 years
-- Used for training all ML models
+- 1.3M transactions from 983 users
+- 14 spending categories
+- Date range: January 2019 - June 2020
+
+## Key Findings
+
+- Fraudulent transactions average $531 vs $68 for normal transactions
+- Fraud peaks during late night hours (22:00-23:00) with ~3% fraud rate
+- User-relative features (z-scores) significantly improved anomaly detection
+- Lag features (previous months' spending) boosted prediction R² from 0.52 to 0.77
+- SLSQP optimizer produces consistent 10:2:1 cut ratio across flexible/important/essential categories
 
 ## License
 
