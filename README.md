@@ -45,7 +45,7 @@ Our system combines spending pattern analysis, mathematical optimization, and be
 | Anomaly Detection | Isolation Forest | Flag unusual spending patterns and potential fraud | 90.10% detection, 0.935 AUC |
 | Spending Prediction | XGBoost | Predict next month's total spending | R²=0.815, MAE=$1,118 |
 | Budget Optimization | SLSQP | Calculate optimal budget cuts across categories | 10:2:1 priority ratio |
-| Advice Prioritization | Neural Network (PyTorch) | Prioritize which budget cuts to make first | 94.25% accuracy |
+| Advice Prioritization | Neural Network (PyTorch) | Prioritize which budget cuts to make first | 90.50% accuracy |
 
 ## User Clusters
 
@@ -101,16 +101,6 @@ pip install -r requirements.txt
 ### 4. Download the dataset
 See `data/README.md` for instructions to download the Kaggle dataset.
 
-### 5. Run notebooks
-Open notebooks in Google Colab or Jupyter and run in order:
-1. Data_Exploration.ipynb
-2. K_Means_Clustering.ipynb
-3. Random_Forest.ipynb
-4. Isolation_Forest.ipynb
-5. Gradient_Boosting.ipynb
-6. SLSQP_Optimization.ipynb
-7. Neural_Networks.ipynb
-8. End_to_End_Testing.ipynb
 
 ## Timeline
 
@@ -123,14 +113,6 @@ Open notebooks in Google Colab or Jupyter and run in order:
 | 7 | End-to-end testing pipeline | Complete |
 | 8 | Streamlit dashboard | In Progress |
 
-## Tech Stack
-
-- **Language:** Python 3.10+
-- **ML:** scikit-learn, XGBoost, PyTorch
-- **Optimization:** SciPy (SLSQP)
-- **Dashboard:** Streamlit
-- **Data:** pandas, numpy
-- **Visualization:** matplotlib, seaborn
 
 ## Dataset
 
@@ -146,7 +128,3 @@ We use the [Kaggle Credit Card Transactions Fraud Detection](https://www.kaggle.
 - User-relative features (z-scores) significantly improved anomaly detection
 - Lag features (previous months' spending) boosted prediction R² from 0.52 to 0.77
 - SLSQP optimizer produces consistent 10:2:1 cut ratio across flexible/important/essential categories
-
-## License
-
-This project is for educational purposes as part of CS 5100 at Northeastern University.
