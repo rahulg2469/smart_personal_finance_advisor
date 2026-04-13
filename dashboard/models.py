@@ -106,18 +106,21 @@ except:
 
 # Load Random Forest model
 try:
-    rf_model = joblib.load(os.path.join(MODELS_PATH, 'random_forest_model.pkl'))
+    rf_path = os.path.join(MODELS_PATH, 'random_forest_model.pkl')
+    print(f"Looking for RF model at: {rf_path}")
+    print(f"File exists: {os.path.exists(rf_path)}")
+    rf_model = joblib.load(rf_path)
     RF_LOADED = True
     print("Loaded Random Forest model")
-except:
+except Exception as e:
     RF_LOADED = False
-    print("Random Forest model not found")
+    print(f"Random Forest model not found: {e}")
 
 
 def categorize_transactions(transactions_df: pd.DataFrame) -> pd.DataFrame:
     """
     Use Random Forest to categorize transactions.
-    Input: DataFrame with columns ['merchant', 'amt', 'hour', 'day_of_week', etc.]
+    Input: DataFrame with columns ['merchant', 'amt', 'lat', 'long', 'city_pop', 'merch_lat', 'merch_long', 'hour', 'day_of_week', 'month']
     Output: DataFrame with added 'predicted_category' column
     """
     if not RF_LOADED:
@@ -125,30 +128,38 @@ def categorize_transactions(transactions_df: pd.DataFrame) -> pd.DataFrame:
     
     df = transactions_df.copy()
     
-    # Feature engineering (same as Random_Forest.ipynb)
-    # Merchant encoding
+    # Feature engineering
     df['merchant_length'] = df['merchant'].str.len()
     df['merchant_word_count'] = df['merchant'].str.split().str.len()
     
-    # If hour/day not provided, use defaults
+    # Merchant encoding using hash (since we don't have the original LabelEncoder)
+    # This approximates the encoding - may have some variance from training
+    df['merchant_encoded'] = df['merchant'].apply(lambda x: hash(x.lower()) % 10000)
+    
+    # Set defaults for missing columns
     if 'hour' not in df.columns:
         df['hour'] = 12
     if 'day_of_week' not in df.columns:
         df['day_of_week'] = 3
-    if 'is_weekend' not in df.columns:
-        df['is_weekend'] = 0
+    if 'month' not in df.columns:
+        df['month'] = 4  # April
+    if 'lat' not in df.columns:
+        df['lat'] = 42.36  # Default: Boston area
+    if 'long' not in df.columns:
+        df['long'] = -71.06
+    if 'city_pop' not in df.columns:
+        df['city_pop'] = 700000  # Default city population
+    if 'merch_lat' not in df.columns:
+        df['merch_lat'] = df['lat']  # Use user lat as default
+    if 'merch_long' not in df.columns:
+        df['merch_long'] = df['long']  # Use user long as default
     
-    # Encode merchant (simple hash for now)
-    df['merchant_encoded'] = df['merchant'].apply(lambda x: hash(x.lower()) % 10000)
-    
-    # Select features (must match training)
-    feature_cols = ['amt', 'hour', 'day_of_week', 'is_weekend', 
-                    'merchant_encoded', 'merchant_length', 'merchant_word_count']
-    
-    # Add missing columns with defaults
-    for col in feature_cols:
-        if col not in df.columns:
-            df[col] = 0
+    # Feature columns in exact order used during training
+    feature_cols = [
+        'amt', 'lat', 'long', 'city_pop', 'merch_lat', 'merch_long',
+        'hour', 'day_of_week', 'month', 'merchant_encoded',
+        'merchant_length', 'merchant_word_count'
+    ]
     
     X = df[feature_cols]
     
@@ -196,14 +207,23 @@ def get_user_cluster(spending: dict) -> tuple:
     
     if KMEANS_LOADED:
         # Use actual K-Means model
-        # K-Means was trained on category spending PERCENTAGES (14 features)
+        # IMPORTANT: Order must match training order (alphabetical)
+        training_order = [
+            'entertainment', 'food_dining', 'gas_transport', 'grocery_net', 
+            'grocery_pos', 'health_fitness', 'home', 'kids_pets', 
+            'misc_net', 'misc_pos', 'personal_care', 'shopping_net', 
+            'shopping_pos', 'travel'
+        ]
+        
         features = np.array([[
-            (spending[cat] / total_spent * 100) for cat in CATEGORIES
+            (spending[cat] / total_spent * 100) for cat in training_order
         ]])
         
         # Scale and predict
         features_scaled = kmeans_scaler.transform(features)
         cluster = kmeans_model.predict(features_scaled)[0]
+        
+        print(f"DEBUG: Total spent=${total_spent:.2f}, Cluster={cluster}, Name={CLUSTER_NAMES.get(cluster, 'Unknown')}")
         
         return cluster, CLUSTER_NAMES.get(cluster, 'Unknown')
     else:
@@ -211,11 +231,11 @@ def get_user_cluster(spending: dict) -> tuple:
         pct = {cat: spending[cat] / total_spent * 100 for cat in CATEGORIES}
         max_category_pct = max(pct.values())
         
-        if max_category_pct > 40:
+        if max_category_pct > 35:
             return 2, 'Inconsistent'
-        elif total_spent > 8000:
+        elif total_spent > 6000:
             return 1, 'High Spender'
-        elif total_spent < 4000:
+        elif total_spent < 3000:
             return 3, 'Budget-Conscious'
         else:
             return 0, 'Average'
@@ -283,98 +303,75 @@ def get_budget_recommendations(spending: dict, savings_goal: float) -> list:
 def get_priority_advice(spending: dict) -> list:
     """
     Determine priority order for budget cuts based on spending patterns.
-    Returns list of (category, difficulty) sorted by easiest first.
+    Returns list of (category, difficulty) using Neural Network model.
     """
     total = sum(spending.values())
     if total == 0:
-        return [(cat, 'N/A') for cat in CATEGORIES]
+        return [(cat, 'Medium') for cat in CATEGORIES]
     
     if NN_LOADED:
-        # Use actual Neural Network model
-        # Prepare features (same as in Neural_Networks.ipynb)
-        num_transactions = 100  # Estimate
-        
-        user_features = {
-            'total_transactions': num_transactions,
-            'total_spending': total,
-            'avg_transaction': total / num_transactions,
-            'std_transaction': (total / num_transactions) * 0.5,
-            'min_transaction': min([s for s in spending.values() if s > 0], default=0),
-            'max_transaction': max(spending.values()),
-            'weekend_pct': 0.3,  # Estimate
-            'avg_hour': 14,  # Estimate
-            'avg_day_of_week': 3,  # Estimate
-            'spending_range': max(spending.values()) - min([s for s in spending.values() if s > 0], default=0),
-            'coefficient_of_variation': 0.5  # Estimate
-        }
-        
-        # Add category percentages
-        for cat in CATEGORIES:
-            user_features[cat] = (spending[cat] / total * 100) if total > 0 else 0
-        
-        # Get feature names from checkpoint and build array
-        feature_names = nn_checkpoint.get('feature_names', list(user_features.keys()))
-        feature_array = np.array([user_features.get(f, 0) for f in feature_names]).reshape(1, -1)
-        
-        # Scale and predict
-        feature_scaled = nn_scaler.transform(feature_array)
-        feature_tensor = torch.FloatTensor(feature_scaled)
-        
-        with torch.no_grad():
-            priorities = nn_model(feature_tensor).numpy()[0]
-        
-        # Map scores to categories
-        category_names = nn_checkpoint.get('category_names', CATEGORIES)
-        priority_list = list(zip(category_names, priorities))
-        priority_list.sort(key=lambda x: -x[1])  # Higher score = easier to cut
-        
-        # Convert to difficulty labels
-        result = []
-        for cat, score in priority_list:
-            if score > 7:
-                difficulty = 'Easy'
-            elif score > 4:
-                difficulty = 'Medium'
-            else:
-                difficulty = 'Hard'
-            result.append((cat, difficulty))
-        
-        return result
+        try:
+            # Use actual Neural Network model
+            num_transactions = 100  # Estimate
+            
+            user_features = {
+                'total_transactions': num_transactions,
+                'total_spending': total,
+                'avg_transaction': total / num_transactions,
+                'std_transaction': (total / num_transactions) * 0.5,
+                'min_transaction': min([s for s in spending.values() if s > 0], default=0),
+                'max_transaction': max(spending.values()),
+                'weekend_pct': 0.3,
+                'avg_hour': 14,
+                'avg_day_of_week': 3,
+                'spending_range': max(spending.values()) - min([s for s in spending.values() if s > 0], default=0),
+                'coefficient_of_variation': 0.5
+            }
+            
+            # Add category percentages
+            for cat in CATEGORIES:
+                user_features[cat] = (spending[cat] / total * 100) if total > 0 else 0
+            
+            # Get feature names from checkpoint and build array
+            feature_names = nn_checkpoint.get('feature_names', list(user_features.keys()))
+            feature_array = np.array([user_features.get(f, 0) for f in feature_names]).reshape(1, -1)
+            
+            # Scale and predict
+            feature_scaled = nn_scaler.transform(feature_array)
+            feature_tensor = torch.FloatTensor(feature_scaled)
+            
+            with torch.no_grad():
+                priorities = nn_model(feature_tensor).numpy()[0]
+            
+            # Map scores to categories
+            category_names = nn_checkpoint.get('category_names', CATEGORIES)
+            priority_list = list(zip(category_names, priorities))
+            priority_list.sort(key=lambda x: -x[1])  # Higher score = easier to cut
+            
+            # Assign difficulty based on position in sorted list
+            # First 5 = Easy, Next 5 = Medium, Last 4 = Hard
+            result = []
+            for i, (cat, score) in enumerate(priority_list):
+                if i < 5:
+                    difficulty = 'Easy'
+                elif i < 10:
+                    difficulty = 'Medium'
+                else:
+                    difficulty = 'Hard'
+                result.append((cat, difficulty))
+            
+            return result
+        except Exception as e:
+            print(f"NN Error: {e}")
+            # Fallback on error
+            return [(cat, 'Medium') for cat in CATEGORIES]
     else:
-        # Fallback: simple rules
-        priorities = []
-        
-        for cat in CATEGORIES:
-            pct = spending[cat] / total * 100
-            config = CATEGORY_CONFIG[cat]
-            
-            if config['priority'] == 'flexible':
-                base_score = 3
-            elif config['priority'] == 'important':
-                base_score = 6
-            else:
-                base_score = 9
-            
-            if pct > 20:
-                base_score += 1
-            elif pct < 5:
-                base_score -= 1
-            
-            if base_score <= 3:
-                difficulty = 'Easy'
-            elif base_score <= 6:
-                difficulty = 'Medium'
-            else:
-                difficulty = 'Hard'
-            
-            priorities.append((cat, difficulty, base_score))
-        
-        priorities.sort(key=lambda x: x[2])
-        return [(cat, diff) for cat, diff, _ in priorities]
+        # Fallback if NN not loaded
+        return [(cat, 'Medium') for cat in CATEGORIES]
 
 def detect_anomalies(spending: dict) -> list:
     """
-    Detect unusual spending patterns.
+    Detect unusual spending patterns using Isolation Forest model.
     Returns list of (category, reason) for anomalies.
     """
     total = sum(spending.values())
@@ -383,53 +380,82 @@ def detect_anomalies(spending: dict) -> list:
     
     anomalies = []
     
-    # Typical spending percentages (from dataset analysis)
+    if ISO_LOADED:
+        try:
+            # Use Isolation Forest model
+            # Prepare features - spending percentages
+            features = np.array([[
+                (spending[cat] / total * 100) for cat in CATEGORIES
+            ]])
+            
+            # Scale features
+            features_scaled = iso_scaler.transform(features)
+            
+            # Predict (-1 = anomaly, 1 = normal)
+            prediction = iso_model.predict(features_scaled)[0]
+            anomaly_score = iso_model.decision_function(features_scaled)[0]
+            
+            if prediction == -1:
+                # Find which categories are unusual
+                for cat in CATEGORIES:
+                    pct = spending[cat] / total * 100
+                    if pct > 25:  # High percentage
+                        anomalies.append((cat, f"Unusually high ({pct:.1f}% of budget)"))
+                    elif spending[cat] > 1000 and pct > 15:
+                        anomalies.append((cat, f"High spending (${spending[cat]:.2f}, {pct:.1f}% of budget)"))
+            
+            return anomalies
+        except Exception as e:
+            print(f"Isolation Forest Error: {e}")
+    
+    # Fallback: rule-based detection
     typical_ranges = {
-        'grocery_pos': (10, 25),
-        'grocery_net': (2, 10),
-        'entertainment': (5, 15),
-        'shopping_pos': (5, 20),
-        'shopping_net': (3, 15),
-        'food_dining': (5, 15),
-        'gas_transport': (8, 20),
-        'health_fitness': (3, 12),
-        'home': (5, 20),
-        'kids_pets': (3, 15),
-        'misc_net': (2, 10),
-        'misc_pos': (2, 10),
-        'personal_care': (3, 10),
-        'travel': (0, 15)
+        'grocery_pos': (10, 25), 'grocery_net': (2, 10), 'entertainment': (5, 15),
+        'shopping_pos': (5, 20), 'shopping_net': (3, 15), 'food_dining': (5, 15),
+        'gas_transport': (8, 20), 'health_fitness': (3, 12), 'home': (5, 20),
+        'kids_pets': (3, 15), 'misc_net': (2, 10), 'misc_pos': (2, 10),
+        'personal_care': (3, 10), 'travel': (0, 15)
     }
     
     for cat in CATEGORIES:
         pct = spending[cat] / total * 100
         low, high = typical_ranges.get(cat, (0, 100))
-        
-        if pct > high * 1.5:  # More than 50% above typical max
+        if pct > high * 1.5:
             anomalies.append((cat, f"Unusually high ({pct:.1f}% of budget, typical max is {high}%)"))
-        elif spending[cat] > 1000 and pct > high:  # Large absolute amount and above typical
-            anomalies.append((cat, f"High spending (${spending[cat]:.2f}, {pct:.1f}% of budget)"))
     
     return anomalies
 
-def predict_next_month(spending_history: list) -> float:
+def predict_next_month(spending: dict) -> float:
     """
-    Predict next month's spending based on history.
-    Requires at least 2 months of data.
+    Predict next month's spending using Gradient Boosting model.
     """
-    if len(spending_history) < 2:
+    total = sum(spending.values())
+    if total == 0:
         return None
     
-    # Simple prediction: weighted average of recent months
-    totals = [sum(month.values()) for month in spending_history]
+    if GB_LOADED:
+        try:
+            # Prepare features for Gradient Boosting
+            # Build feature dict matching training
+            features_dict = {}
+            for cat in CATEGORIES:
+                features_dict[cat] = spending.get(cat, 0)
+                features_dict[f'{cat}_pct'] = (spending.get(cat, 0) / total * 100) if total > 0 else 0
+            
+            features_dict['total_spending'] = total
+            features_dict['num_categories'] = sum(1 for v in spending.values() if v > 0)
+            features_dict['avg_category_spend'] = total / 14
+            features_dict['max_category_spend'] = max(spending.values())
+            features_dict['min_category_spend'] = min([v for v in spending.values() if v > 0], default=0)
+            
+            # Build feature array in correct order
+            feature_array = np.array([[features_dict.get(f, 0) for f in gb_features]])
+            
+            # Predict
+            prediction = gb_model.predict(feature_array)[0]
+            return max(0, prediction)
+        except Exception as e:
+            print(f"Gradient Boosting Error: {e}")
     
-    # More recent months have higher weight
-    weights = list(range(1, len(totals) + 1))
-    weighted_avg = sum(t * w for t, w in zip(totals, weights)) / sum(weights)
-    
-    # Add slight trend adjustment
-    if len(totals) >= 3:
-        recent_trend = (totals[-1] - totals[-3]) / 2
-        weighted_avg += recent_trend * 0.5
-    
-    return max(0, weighted_avg)
+    # Fallback: return current total with small adjustment
+    return total * 1.02  # Assume 2% increase

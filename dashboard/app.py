@@ -15,6 +15,7 @@ from dashboard.models import (
     get_budget_recommendations,
     get_priority_advice,
     detect_anomalies,
+    predict_next_month,
     categorize_transactions,
     summarize_by_category,
     RF_LOADED
@@ -173,7 +174,7 @@ def inject_css():
     }
     .spend-label { font-size:0.7rem; color:#64748b; letter-spacing:0.15em; text-transform:uppercase; margin-bottom:3px; }
     .spend-amount {
-        font-family:'Cormorant Garamond',serif;
+        font-family:'DM Sans', sans-serif;
         font-size:2.4rem; font-weight:700; color:#f1f5f9; line-height:1;
     }
     .a-card {
@@ -401,7 +402,7 @@ def landing_page():
         st.markdown("""
         <div class="mode-card demo">
             <div class="mc-header">
-                <div class="mc-icon blue">📊</div>
+                <div class="mc-icon blue"><img src="./app/static/bar-graph.png" width="20" style="filter: brightness(0) invert(1);"></div>
                 <div class="mc-title">Demo Mode</div>
             </div>
             <div class="mc-desc">Explore with sample users from our dataset. No signup needed.
@@ -422,7 +423,7 @@ def landing_page():
         st.markdown("""
         <div class="mode-card acct">
             <div class="mc-header">
-                <div class="mc-icon green">⚡</div>
+                <div class="mc-icon green"><img src="./app/static/login.png" width="20" style="filter: brightness(0) invert(1);"></div>
                 <div class="mc-title">Your Account</div>
             </div>
             <div class="mc-desc">Sign up to track your own spending. Get personalized insights,
@@ -442,7 +443,7 @@ def landing_page():
     st.markdown("""
     <div class="feat-strip">
         <div class="feat-item">
-            <div class="feat-icon" style="background:linear-gradient(135deg,#1e3a8a,#3b82f6);">📈</div>
+            <div class="feat-icon" style="background:linear-gradient(135deg,#1e3a8a,#3b82f6);"><img src="./app/static/bar-graph.png" width="20" style="filter: brightness(0) invert(1);"></div>
             <div class="feat-name">Smart Analytics</div>
             <div class="feat-desc">AI-powered insights into your spending patterns</div>
         </div>
@@ -482,7 +483,7 @@ def demo_page():
             return pd.DataFrame(data, index=CATEGORIES).T
 
     demo_data = load_demo_data()
-    users = demo_data.index.tolist()[:6]
+    users = demo_data.index.tolist()  # All users, no limit
 
     if st.session_state.demo_user not in users:
         st.session_state.demo_user = users[0]
@@ -499,21 +500,23 @@ def demo_page():
 
     st.markdown("<hr style='border:none;border-top:1px solid rgba(51,65,85,0.5);margin:10px 0 18px;'>", unsafe_allow_html=True)
 
-    # ── User selector ──
+    # ── User selector (Dropdown) ──
     st.markdown('<div class="section-label">Select a sample user</div>', unsafe_allow_html=True)
-    st.markdown('<div class="user-pills">', unsafe_allow_html=True)
-    pill_cols = st.columns(min(len(users), 3))
-    for i, u in enumerate(users[:3]):
-        with pill_cols[i]:
-            label = f"▶ {u}" if u == st.session_state.demo_user else u
-            if st.button(label, key=f"pill_{i}", use_container_width=True):
-                st.session_state.demo_user = u
-                st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    
+    selected_user = st.selectbox(
+        "Choose a user ID",
+        options=users,
+        index=users.index(st.session_state.demo_user) if st.session_state.demo_user in users else 0,
+        format_func=lambda x: f"User {x}",
+        label_visibility="collapsed"
+    )
+    
+    if selected_user != st.session_state.demo_user:
+        st.session_state.demo_user = selected_user
+        st.rerun()
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
-    selected_user = st.session_state.demo_user
     spending = demo_data.loc[selected_user].to_dict()
     total = sum(spending.values())
 
@@ -532,7 +535,7 @@ def demo_page():
 
     with col_chart:
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.markdown('<div class="a-card-title">📊 Spending Breakdown</div>', unsafe_allow_html=True)
+        st.markdown('<div class="a-card-title"><img src="./app/static/bar-graph.png" width="20" style="vertical-align: middle; margin-right: 6px;"> Spending Breakdown</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
         chart_df = pd.DataFrame([
@@ -708,6 +711,24 @@ def auth_page():
 def user_dashboard():
     supabase = get_supabase()
     user_id = st.session_state.user.id
+    
+    # Top bar with Back and Logout buttons
+    col_back, col_title, col_logout = st.columns([1, 7, 1])
+    with col_back:
+        if st.button("← Back", key="user_back", type="secondary"):
+            logout()
+            st.session_state.mode = None
+            st.rerun()
+    with col_title:
+        st.markdown(f'<div class="page-header">Welcome, {st.session_state.user.email}</div>', unsafe_allow_html=True)
+    with col_logout:
+        if st.button("Logout", key="user_logout", type="secondary"):
+            logout()
+            st.session_state.mode = None
+            st.rerun()
+    
+    st.markdown("<hr style='border:none;border-top:1px solid rgba(51,65,85,0.5);margin:10px 0 18px;'>", unsafe_allow_html=True)
+    
     tab1, tab2, tab3 = st.tabs(["Enter Spending", "View Analysis", "History"])
     with tab1:
         enter_spending(supabase, user_id)
@@ -734,7 +755,7 @@ def enter_spending(supabase, user_id):
         if not RF_LOADED:
             st.warning("Random Forest model not loaded.")
             return
-        st.info("CSV columns: merchant, amt. Optional: hour, day_of_week")
+        st.info("**Required columns:** merchant, amt\n\n**Optional columns:** lat, long, city_pop, merch_lat, merch_long, hour, day_of_week, month\n\n*If location columns are missing, defaults will be used.*")
         uploaded = st.file_uploader("Choose CSV", type="csv")
         if uploaded:
             try:
@@ -763,40 +784,190 @@ def save_spending(supabase, user_id, month, spending):
 
 def view_analysis(supabase, user_id):
     st.markdown("### Your Analysis")
+    
+    # Get all months for this user
     resp = supabase.table('monthly_spending').select('*').eq('user_id', user_id)\
-        .order('month', desc=True).limit(1).execute()
+        .order('month', desc=True).execute()
+    
     if not resp.data:
         st.warning("No spending data found. Enter your spending first.")
         return
-    spending = {cat: float(resp.data[0][cat]) for cat in CATEGORIES}
+    
+    # Create month selector
+    months = [row['month'] for row in resp.data]
+    selected_month = st.selectbox("Select Month", months, index=0)
+    
+    # Get data for selected month
+    month_data = next((row for row in resp.data if row['month'] == selected_month), resp.data[0])
+    spending = {cat: float(month_data[cat]) for cat in CATEGORIES}
     total = sum(spending.values())
 
     st.markdown(f"""
     <div class="spend-banner">
-        <div class="spend-label">Total Monthly Spending</div>
+        <div class="spend-label">Total Monthly Spending — {selected_month}</div>
         <div class="spend-amount">${total:,.2f}</div>
     </div>""", unsafe_allow_html=True)
 
-    _, cluster_name = get_user_cluster(spending)
-    st.metric("Spending Type", cluster_name)
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
-    recs = get_budget_recommendations(spending, 500)
-    for r in recs[:5]:
+    # ── Chart + Profile ──
+    col_chart, col_profile = st.columns([3, 2], gap="large")
+
+    with col_chart:
+        st.markdown("""
+        <div class="a-card">
+            <div class="a-card-title"><img src="./app/static/spending-breakdown.png" width="20" style="vertical-align: middle; margin-right: 6px;"> Spending Breakdown</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+        chart_df = pd.DataFrame([
+            {'Category': CATEGORY_LABELS[c], 'Amount': spending[c]}
+            for c in CATEGORIES if spending[c] > 0
+        ]).sort_values('Amount', ascending=True)
+
+        try:
+            import plotly.express as px
+            fig = px.bar(chart_df, x='Amount', y='Category', orientation='h',
+                         color_discrete_sequence=['#3b82f6'])
+            fig.update_layout(
+                paper_bgcolor='rgba(15,23,42,0.9)', plot_bgcolor='rgba(15,23,42,0.9)',
+                font=dict(color='#94a3b8', size=11),
+                margin=dict(l=10, r=20, t=10, b=10),
+                xaxis=dict(gridcolor='rgba(51,65,85,0.4)', tickfont=dict(color='#64748b'), title=None),
+                yaxis=dict(tickfont=dict(color='#cbd5e1', size=11), title=None),
+                showlegend=False, height=390,
+                hoverlabel=dict(bgcolor='rgba(15,23,42,0.95)', bordercolor='#3b82f6', font=dict(color='#f1f5f9', size=13))
+            )
+            fig.update_traces(marker_line_width=0, hovertemplate='<b>%{y}</b><br>amount : $%{x:,.2f}<extra></extra>')
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        except ImportError:
+            st.bar_chart(chart_df.set_index('Category')['Amount'])
+
+    with col_profile:
+        _, cluster_name = get_user_cluster(spending)
+        desc_map = {
+            'Average': "You have typical spending patterns across categories.",
+            'High Spender': "You spend more than average across most categories.",
+            'Inconsistent': "Your spending varies significantly with occasional large purchases.",
+            'Budget-Conscious': "You're careful with spending and focus on essentials."
+        }
         st.markdown(f"""
-        <div class="rec-row">
-            <div class="rec-name">{CATEGORY_LABELS[r['category']]}</div>
-            <div class="rec-right">
-                <div class="rec-amts">${r['current']:.2f} → ${r['recommended']:.2f}</div>
-                <div class="rec-save">Save ${r['savings']:.2f}</div>
+        <div class="a-card">
+            <div class="a-card-title"><img src="./app/static/login.png" width="20" style="vertical-align: middle; margin-right: 6px;"> Your Profile</div>
+            <div style="font-size:0.7rem;color:#64748b;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;">Spending Type</div>
+            <div class="cluster-name">{cluster_name}</div>
+            <div class="cluster-desc">{desc_map.get(cluster_name,'')}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Budget Optimizer with Slider ──
+    st.markdown("""
+    <div class="section-card">
+        <div class="a-card-title"><img src="./app/static/target.png" width="20" style="vertical-align: middle; margin-right: 6px;"> Budget Optimizer</div>
+        <div style="font-size:0.82rem;color:#64748b;margin-bottom:4px;">How much do you want to save?</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    max_save = max(200, int(total * 0.6))
+    capped_default = min(st.session_state.savings_goal, min(max_save, 3000))
+    savings_goal = st.slider(
+        "savings", min_value=100, max_value=min(max_save, 3000),
+        value=capped_default, step=50,
+        label_visibility="collapsed", key="user_savings_slider"
+    )
+    st.session_state.savings_goal = savings_goal
+    st.markdown(f'<div class="savings-val">${savings_goal:,}</div>', unsafe_allow_html=True)
+
+    # Get difficulty ratings
+    priorities = get_priority_advice(spending)
+    difficulty_map = {cat: diff for cat, diff in priorities}
+
+    recs = get_budget_recommendations(spending, savings_goal)
+    if recs:
+        # Sort by difficulty
+        def diff_order(r):
+            diff = difficulty_map.get(r['category'], 'Medium')
+            return {'Easy': 0, 'Medium': 1, 'Hard': 2}.get(diff, 1)
+        sorted_recs = sorted(recs, key=diff_order)
+
+        st.markdown('<div class="a-card-title" style="margin-top:16px;margin-bottom:10px;"><img src="./app/static/target.png" width="20" style="vertical-align: middle; margin-right: 6px;"> Recommended Budget Cuts</div>', unsafe_allow_html=True)
+        for r in sorted_recs[:10]:
+            diff = difficulty_map.get(r['category'], 'Medium')
+            cls = f"d-{diff.lower()}"
+            st.markdown(f"""
+            <div class="rec-row">
+                <div class="rec-left">
+                    <div class="rec-name">{CATEGORY_LABELS[r['category']]}</div>
+                    <span class="diff-badge {cls}">{diff}</span>
+                </div>
+                <div class="rec-right">
+                    <div class="rec-amts">${r['current']:.2f} → ${r['recommended']:.2f}</div>
+                    <div class="rec-save">Save ${r['savings']:.2f}</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown('<div style="color:#64748b;font-size:0.84rem;padding:8px 0;">Savings goal exceeds reducible spending. Try a lower target.</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Anomalies ──
+    anomalies = detect_anomalies(spending)
+    if anomalies:
+        anom_rows_html = ""
+        for cat, reason in anomalies:
+            anom_rows_html += f'<div class="anom-row"><div class="anom-dot"></div><div class="anom-text"><strong>{CATEGORY_LABELS[cat]}</strong>: {reason}</div></div>'
+        st.markdown(f"""<div class="a-card">
+            <div class="anom-header">
+                <span style="font-size:16px;">⚠️</span>
+                <span class="anom-title">Spending Anomalies</span>
             </div>
+            <div class="anom-sub">Found {len(anomalies)} unusual spending pattern{"s" if len(anomalies)>1 else ""}:</div>
+            {anom_rows_html}
         </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="a-card">
+            <div class="anom-header">
+                <span style="font-size:16px;">⚠️</span>
+                <span class="anom-title">Spending Anomalies</span>
+            </div>
+            <div class="no-anom">✓ No unusual spending patterns detected.</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    for cat, reason in detect_anomalies(spending):
-        st.markdown(f"""
-        <div class="anom-row">
-            <div class="anom-dot"></div>
-            <div class="anom-text"><strong>{CATEGORY_LABELS[cat]}</strong>: {reason}</div>
-        </div>""", unsafe_allow_html=True)
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Predict Next Month ──
+    if len(resp.data) >= 2:
+        predicted = predict_next_month(spending)
+        if predicted:
+            diff = predicted - total
+            diff_pct = (diff / total * 100) if total > 0 else 0
+            trend_color = "#ef4444" if diff > 0 else "#10b981"
+            trend_icon = '<img src="./app/static/bar-graph.png" width="16" style="vertical-align: middle;">' if diff > 0 else '<img src="./app/static/bar-graph.png" width="16" style="vertical-align: middle; transform: scaleY(-1);">'
+            trend_text = f"+${diff:,.2f} ({diff_pct:+.1f}%)" if diff > 0 else f"-${abs(diff):,.2f} ({diff_pct:.1f}%)"
+            
+            st.markdown(f"""
+            <div class="a-card">
+                <div class="a-card-title"><img src="./app/static/bar-graph.png" width="20" style="vertical-align: middle; margin-right: 6px;"> Spending Forecast</div>
+                <div style="font-size:0.7rem;color:#64748b;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;">Predicted Next Month</div>
+                <div style="font-family:'DM Sans',sans-serif;font-size:1.85rem;font-weight:700;color:#3b82f6;margin-bottom:8px;">${predicted:,.2f}</div>
+                <div style="font-size:0.85rem;color:{trend_color};display:flex;align-items:center;gap:6px;">
+                    <span>{trend_icon}</span>
+                    <span>{trend_text} from current month</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="margin-top:16px;padding:12px;background:rgba(30,41,59,0.5);border-radius:8px;color:#64748b;font-size:0.85rem;">
+            <img src="./app/static/bar-graph.png" width="16" style="vertical-align: middle; margin-right: 4px;"> <strong>Spending Forecast</strong> will be available after 2 months of data.
+        </div>
+        """, unsafe_allow_html=True)
 
 
 def view_history(supabase, user_id):
